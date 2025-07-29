@@ -1,0 +1,1 @@
+Some([q1: lvl 2484, 0d 0h 31min, c5: lvl 2006, 0d 4h 31min, q1: lvl 2485, 0d 5h 11min, q2: lvl 593, 0d 8h 49min, c5: lvl 2007, 0d 11h 26min, q1: lvl 2486, 0d 11h 48min, q1: lvl 2487, 0d 12h 48min, c5: lvl 2008, 0d 16h 13min, q1: lvl 2488, 0d 17h 16min])
