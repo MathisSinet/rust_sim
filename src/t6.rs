@@ -1,5 +1,4 @@
 use crate::utils::*;
-use crate::s;
 
 struct T6vars {
     q1: Variable<FirstFreeCost<ExponentialCost>, StepwiseValue>,
@@ -8,41 +7,25 @@ struct T6vars {
     r2: Variable<ExponentialCost, ExponentialValue>,
     c1: Variable<ExponentialCost, StepwiseValue>,
     c2: Variable<ExponentialCost, ExponentialValue>,
-    c5: Variable<ExponentialCost, ExponentialValue>
+    c5: Variable<ExponentialCost, ExponentialValue>,
 }
 
 impl T6vars {
     fn init() -> Self {
         T6vars {
-                q1: Variable::new(
-                    FirstFreeCost { model: ExponentialCost::new(15., 3.) }, 
-                    StepwiseValue::new(2., 10)
-                ), // q1
-                q2: Variable::new(
-                    ExponentialCost::new(500., 100.),
-                    ExponentialValue::new(2.)
-                ), // q2
-                r1: Variable::new(
-                    ExponentialCost::new(1e25, 1e5),
-                    StepwiseValue::new(2.,10)
-                ), // r1
-                r2: Variable::new(
-                    ExponentialCost::new(1e30, 1e10),
-                    ExponentialValue::new(2.)
-                ), // r2
-                c1: Variable::new(
-                    ExponentialCost::new(10., 2.),
-                    StepwiseValue::new(2.,10)
-                ), // c1
-                c2: Variable::new(
-                    ExponentialCost::new(100., 5.),
-                    ExponentialValue::new(2.)
-                ), // c2
-                c5: Variable::new(
-                    ExponentialCost::new(15., 3.9),
-                    ExponentialValue::new(2.)
-                ), // c5
-            }
+            q1: Variable::new(
+                FirstFreeCost {
+                    model: ExponentialCost::new(15., 3.),
+                },
+                StepwiseValue::new(2., 10),
+            ), // q1
+            q2: Variable::new(ExponentialCost::new(500., 100.), ExponentialValue::new(2.)), // q2
+            r1: Variable::new(ExponentialCost::new(1e25, 1e5), StepwiseValue::new(2., 10)), // r1
+            r2: Variable::new(ExponentialCost::new(1e30, 1e10), ExponentialValue::new(2.)), // r2
+            c1: Variable::new(ExponentialCost::new(10., 2.), StepwiseValue::new(2., 10)),   // c1
+            c2: Variable::new(ExponentialCost::new(100., 5.), ExponentialValue::new(2.)),   // c2
+            c5: Variable::new(ExponentialCost::new(15., 3.9), ExponentialValue::new(2.)),   // c5
+        }
     }
 
     fn _iter_noc12(&mut self) -> Vec<&mut dyn VariableTrait> {
@@ -51,7 +34,7 @@ impl T6vars {
             &mut self.q2,
             &mut self.r1,
             &mut self.r2,
-            &mut self.c5
+            &mut self.c5,
         ]
     }
 
@@ -61,11 +44,11 @@ impl T6vars {
             &mut self.r2,
             &mut self.r1,
             &mut self.q2,
-            &mut self.q1
+            &mut self.q1,
         ]
     }
 
-    fn getm(&mut self, id:usize) -> &mut dyn VariableTrait {
+    fn getm(&mut self, id: usize) -> &mut dyn VariableTrait {
         match id {
             0 => &mut self.q1,
             1 => &mut self.q2,
@@ -73,11 +56,11 @@ impl T6vars {
             3 => &mut self.r2,
             4 => &mut self.c1,
             5 => &mut self.c2,
-            6 | _ => &mut self.c5
+            _ => &mut self.c5,
         }
     }
 
-    fn get(&self, id:usize) -> &dyn VariableTrait {
+    fn get(&self, id: usize) -> &dyn VariableTrait {
         match id {
             0 => &self.q1,
             1 => &self.q2,
@@ -85,16 +68,15 @@ impl T6vars {
             3 => &self.r2,
             4 => &self.c1,
             5 => &self.c2,
-            6 | _ => &self.c5
+            _ => &self.c5,
         }
     }
 
     fn set(&mut self, lvls: [u32; 7]) {
-        for i in 0..7 {
-            self.getm(i).set(lvls[i]);
+        for (i, level) in lvls.iter().enumerate() {
+            self.getm(i).set(*level);
         }
     }
-
 }
 
 #[derive(Clone)]
@@ -103,19 +85,17 @@ struct T6data {
     skip: [bool; 7],
     scale_start: f64,
     scale_end: f64,
-    tol: f64
+    tol: f64,
 }
 
-impl Copy for T6data {
-    
-}
+impl Copy for T6data {}
 
 pub struct T6state {
     pub levels: [u32; 7],
     pub q: f64,
-    pub r: f64
+    pub r: f64,
+    pub tol: f64,
 }
-
 
 pub struct T6 {
     data: TheoryData,
@@ -134,19 +114,19 @@ pub struct T6 {
     ddt: f64,
     depth: u32,
 
-    best_res: SimRes
+    best_res: SimRes,
 }
 
 impl T6 {
-    pub fn new(data:TheoryData, goal:f64, state:Option<T6state>) -> Self {
+    pub fn new(data: TheoryData, goal: f64, state: Option<T6state>) -> Self {
         let mut t6: T6 = T6 {
             data: data,
-            t6data: T6data { 
-                caps: [std::u32::MAX; 7], 
+            t6data: T6data {
+                caps: [u32::MAX; 7],
                 skip: [false; 7],
                 scale_start: -2.,
                 scale_end: 2.,
-                tol: 3.
+                tol: 1.,
             },
             goal: goal,
             rho: 0.,
@@ -163,16 +143,14 @@ impl T6 {
             ddt: 1.0001,
             depth: 0,
 
-            best_res: SimRes { t: std::f64::MAX, var_buys: None }
+            best_res: SimRes::default(),
         };
 
-        match state {
-            None => (),
-            Some(state) => {
-                t6.vars.set(state.levels);
-                t6.q = state.q;
-                t6.r = state.r;
-            }
+        if let Some(state) = state {
+            t6.vars.set(state.levels);
+            t6.q = state.q;
+            t6.r = state.r;
+            t6.t6data.tol = state.tol;
         }
 
         t6.rho = t6.data.rho;
@@ -199,7 +177,7 @@ impl T6 {
             ddt: self.ddt,
             depth: self.depth + 1,
 
-            best_res: SimRes { t: std::f64::MAX, var_buys: None }
+            best_res: SimRes::default(),
         };
 
         for i in 0..7 {
@@ -215,30 +193,50 @@ impl T6 {
         new
     }
 
-    fn eval_coast(&self, id:usize, cost:f64) -> BuyEval {
-        let dist:f64 = self.goal - cost;
+    fn eval_coast(&self, id: usize, cost: f64) -> BuyEval {
+        let dist: f64 = self.goal - cost;
         if dist > 2. {
             return BuyEval::BUY;
         }
         match id {
             0 | 2 => {
-                if dist < 5f64.log10() { BuyEval::SKIP } else { BuyEval::FORK }
-            },
-            1 | 3 => {
-                if dist < 2f64.log10() { BuyEval::SKIP } else { BuyEval::FORK }
-            },
-            6 => {
-                if dist < 1.5f64.log10() { BuyEval::SKIP } else if dist < 2.5f64.log10() { BuyEval::FORK } else { BuyEval::BUY }
+                if dist < 5f64.log10() {
+                    BuyEval::SKIP
+                } else {
+                    BuyEval::FORK
+                }
             }
-            _ => BuyEval::SKIP
+            1 | 3 => {
+                if dist < 2f64.log10() {
+                    BuyEval::SKIP
+                } else {
+                    BuyEval::FORK
+                }
+            }
+            6 => {
+                if dist < 1.5f64.log10() {
+                    BuyEval::SKIP
+                } else if dist < 2.5f64.log10() {
+                    BuyEval::FORK
+                } else {
+                    BuyEval::BUY
+                }
+            }
+            _ => BuyEval::SKIP,
         }
     }
 
     fn eval_ratio_one(&self, ratio: f64, lbound: f64, ubound: f64) -> BuyEval {
-        if ratio >= ubound {BuyEval::BUY} else if ratio > lbound {BuyEval::FORK} else {BuyEval::SKIP}
+        if ratio >= ubound {
+            BuyEval::BUY
+        } else if ratio > lbound {
+            BuyEval::FORK
+        } else {
+            BuyEval::SKIP
+        }
     }
 
-    fn eval_ratio(&self, id:usize) -> BuyEval {
+    fn eval_ratio(&self, id: usize) -> BuyEval {
         let prog: f64 = self.get_pub_progress();
         let tol: f64 = self.t6data.tol * prog;
         let mut best_eval: BuyEval = BuyEval::BUY;
@@ -253,37 +251,37 @@ impl T6 {
                         1 => {
                             base_ratio = (7. + mod10).log10();
                             self.eval_ratio_one(
-                                self.vars.q2.cost - self.vars.q1.cost, 
-                                (base_ratio - 0.1*tol).max(0.0), 
-                                base_ratio + 0.25*tol
+                                self.vars.q2.cost - self.vars.q1.cost,
+                                (base_ratio - 0.1 * tol).max(0.0),
+                                base_ratio + 0.25 * tol,
                             )
-                        },
+                        }
                         3 => {
                             base_ratio = (7. + mod10).log10();
                             self.eval_ratio_one(
-                                self.vars.r2.cost - self.vars.q1.cost, 
-                                (base_ratio - 0.05*tol).max(0.0), 
-                                base_ratio + 0.6*tol
+                                self.vars.r2.cost - self.vars.q1.cost,
+                                (base_ratio - 0.05 * tol).max(0.0),
+                                base_ratio + 0.6 * tol,
                             )
-                        },
+                        }
                         6 => {
-                            base_ratio = (5. + 0.5*mod10).log10();
+                            base_ratio = (5. + 0.5 * mod10).log10();
                             self.eval_ratio_one(
-                                self.vars.c5.cost - self.vars.q1.cost, 
-                                (base_ratio - (0.4 - 0.3 * prog.powi(2))*tol).max(0.0), 
-                                base_ratio + (0.35 * prog.powi(2))*tol
+                                self.vars.c5.cost - self.vars.q1.cost,
+                                (base_ratio - (0.4 - 0.3 * prog.powi(2)) * tol).max(0.0),
+                                base_ratio + (0.35 * prog.powi(2)) * tol,
                             )
-                        },
-                        _ => BuyEval::BUY
+                        }
+                        _ => BuyEval::BUY,
                     };
                     if cur_eval == BuyEval::SKIP {
-                        return BuyEval::SKIP
+                        return BuyEval::SKIP;
                     }
                     if cur_eval == BuyEval::FORK {
                         best_eval = BuyEval::FORK;
                     }
                 }
-            },
+            }
             1 => {
                 for cmp in [3, 6] {
                     cur_eval = match cmp {
@@ -292,101 +290,104 @@ impl T6 {
                             self.eval_ratio_one(
                                 self.vars.r2.cost - self.vars.q2.cost,
                                 base_ratio - 0.1 * tol,
-                                base_ratio + 0.2 * tol
+                                base_ratio + 0.2 * tol,
                             )
-                        },
+                        }
                         6 => {
-                            if self.t6data.skip[6] || prog < 0.7 { BuyEval::BUY }
-                            else {
+                            if self.t6data.skip[6] || prog < 0.7 {
+                                BuyEval::BUY
+                            } else {
                                 self.eval_ratio_one(
-                                    self.vars.c5.cost - self.vars.q2.cost, 
-                                    0., 
-                                    0.5 * tol * prog
+                                    self.vars.c5.cost - self.vars.q2.cost,
+                                    0.,
+                                    0.5 * tol * prog,
                                 )
                             }
-                        },
-                        _ => BuyEval::BUY
+                        }
+                        _ => BuyEval::BUY,
                     };
                     if cur_eval == BuyEval::SKIP {
-                        return BuyEval::SKIP
+                        return BuyEval::SKIP;
                     }
                     if cur_eval == BuyEval::FORK {
                         best_eval = BuyEval::FORK;
                     }
                 }
-            },
+            }
             2 => {
                 let mod10: f64 = (self.vars.r1.level % 10) as f64;
                 for cmp in [1, 3, 6] {
                     cur_eval = match cmp {
                         1 => {
-                            base_ratio = (3. + 0.5*mod10).log10();
+                            base_ratio = (3. + 0.5 * mod10).log10();
                             self.eval_ratio_one(
-                                self.vars.q2.cost - self.vars.r1.cost, 
-                                (base_ratio - 0.1*tol).max(0.0), 
-                                base_ratio + 0.1*tol
+                                self.vars.q2.cost - self.vars.r1.cost,
+                                (base_ratio - 0.1 * tol).max(0.0),
+                                base_ratio + 0.1 * tol,
                             )
-                        },
+                        }
                         3 => {
-                            if self.vars.r2.cost + 1. > self.vars.r1.cost { BuyEval::BUY } else { BuyEval::SKIP }
-                        },
+                            if self.vars.r2.cost + 1. > self.vars.r1.cost {
+                                BuyEval::BUY
+                            } else {
+                                BuyEval::SKIP
+                            }
+                        }
                         6 => {
-                            base_ratio = (3. + 0.5*mod10).log10();
+                            base_ratio = (3. + 0.5 * mod10).log10();
                             self.eval_ratio_one(
-                                self.vars.c5.cost - self.vars.r1.cost, 
-                                (base_ratio - (0.25 + 0.25 * prog.powi(2))*tol).max(0.0), 
-                                base_ratio + (0.25 * prog.powi(2))*tol
+                                self.vars.c5.cost - self.vars.r1.cost,
+                                (base_ratio - (0.25 + 0.25 * prog.powi(2)) * tol).max(0.0),
+                                base_ratio + (0.25 * prog.powi(2)) * tol,
                             )
-                        },
-                        _ => BuyEval::BUY
+                        }
+                        _ => BuyEval::BUY,
                     };
                     if cur_eval == BuyEval::SKIP {
-                        return BuyEval::SKIP
+                        return BuyEval::SKIP;
                     }
                     if cur_eval == BuyEval::FORK {
                         best_eval = BuyEval::FORK;
                     }
                 }
-            },
+            }
             3 => (),
             6 => {
                 for cmp in [1, 3] {
                     cur_eval = match cmp {
                         1 => {
-                            if self.t6data.skip[1] || prog > 0.7 { BuyEval::BUY }
-                            else {
-                            self.eval_ratio_one(
-                                self.vars.q2.cost - self.vars.c5.cost,
-                                0.,
-                                0.15 * tol
-                            )
+                            if self.t6data.skip[1] || prog > 0.7 {
+                                BuyEval::BUY
+                            } else {
+                                self.eval_ratio_one(
+                                    self.vars.q2.cost - self.vars.c5.cost,
+                                    0.,
+                                    0.15 * tol,
+                                )
                             }
-                            
-                        },
-                        3 => {
-                            self.eval_ratio_one(
-                                self.vars.r2.cost - self.vars.c5.cost, 
-                                0., 
-                                0.3 * tol
-                            )
-                        },
-                        _ => BuyEval::BUY
+                        }
+                        3 => self.eval_ratio_one(
+                            self.vars.r2.cost - self.vars.c5.cost,
+                            0.,
+                            0.3 * tol,
+                        ),
+                        _ => BuyEval::BUY,
                     };
                     if cur_eval == BuyEval::SKIP {
-                        return BuyEval::SKIP
+                        return BuyEval::SKIP;
                     }
                     if cur_eval == BuyEval::FORK {
                         best_eval = BuyEval::FORK;
                     }
                 }
-            },
-            _ => ()
+            }
+            _ => (),
         }
 
         best_eval
     }
 
-    fn get_multiplier(&self, tau:f64, sigma:u32) -> f64 {
+    fn get_multiplier(&self, tau: f64, sigma: u32) -> f64 {
         3. * (sigma as f64 / 20.).log10() + 0.196 * tau - 50f64.log10()
     }
 
@@ -394,9 +395,13 @@ impl T6 {
         let rho_start: f64 = self.data.tau + self.t6data.scale_start;
         let rho_end: f64 = self.goal - self.t6data.scale_end;
 
-        if self.maxrho <= rho_start { 0. }
-        else if self.maxrho >= rho_end { 1. }
-        else { (self.maxrho - rho_start) / (rho_end - rho_start) }
+        if self.maxrho <= rho_start {
+            0.
+        } else if self.maxrho >= rho_end {
+            1.
+        } else {
+            (self.maxrho - rho_start) / (rho_end - rho_start)
+        }
     }
 
     fn calc_integral(&self) -> f64 {
@@ -432,27 +437,35 @@ impl T6 {
         //println!("{};{};{};{};{}", self.vars.q1.level, self.vars.q2.level, self.vars.r1.level, self.vars.r2.level, self.vars.c5.level);
 
         if self.t < self.best_res.t {
-            SimRes { t: self.t, var_buys: Some(self.varbuys.clone()) }
-        }
-        else {
-            SimRes { t: self.best_res.t, var_buys: Some(self.varbuys.clone()) }
+            SimRes {
+                t: self.t,
+                var_buys: Some(self.varbuys.clone()),
+            }
+        } else {
+            SimRes {
+                t: self.best_res.t,
+                var_buys: self.best_res.var_buys.clone(),
+            }
         }
     }
 
     fn _buy_noc1234(&mut self) {
         let mut cost: f64;
-        let names = ["c5", "r2", "r1", "q2", "q1"];
-        let ids: [usize; 5] = [6, 3, 2, 1, 0];
+        let variables = [(6, "c5"), (3, "r2"), (2, "r1"), (1, "q2"), (0, "q1")];
 
-        for i in 0..5 {
-            cost = self.vars.get(ids[i]).get_cost();
+        for (id, name) in variables {
+            cost = self.vars.get(id).get_cost();
             while self.rho > cost {
                 self.rho = log10sub(self.rho, cost);
-                self.vars.getm(ids[i]).buy();
+                self.vars.getm(id).buy();
                 if self.rho > self.data.tau - 5. {
-                    self.varbuys.push(VarBuy { symb: String::from(names[i]), lvl: self.vars.get(ids[i]).get_level(), t: self.t });
+                    self.varbuys.push(VarBuy {
+                        symb: String::from(name),
+                        lvl: self.vars.get(id).get_level(),
+                        t: self.t,
+                    });
                 }
-                cost = self.vars.get(ids[i]).get_cost();
+                cost = self.vars.get(id).get_cost();
             }
         }
     }
@@ -461,27 +474,38 @@ impl T6 {
         let mut cost: f64;
         let mut coast_eval: BuyEval;
         let mut ratio_eval: BuyEval;
-        let names = ["c5", "r2", "r1", "q2", "q1"];
-        let ids: [usize; 5] = [6, 3, 2, 1, 0];
+        let variables: [(usize, &str); 5] = [(6, "c5"), (3, "r2"), (2, "r1"), (1, "q2"), (0, "q1")];
 
-        for i in 0..5 {
-            if self.t6data.skip[ids[i]] { continue; }
-            if self.vars.get(ids[i]).get_level() >= self.t6data.caps[ids[i]] { continue; }
-            cost = self.vars.get(ids[i]).get_cost();
+        for (id, name) in variables {
+            if self.t6data.skip[id] {
+                continue;
+            }
+            if self.vars.get(id).get_level() >= self.t6data.caps[id] {
+                continue;
+            }
+
+            cost = self.vars.get(id).get_cost();
+
             while self.rho > cost {
-                coast_eval = self.eval_coast(ids[i], cost);
-                ratio_eval = self.eval_ratio(ids[i]);
+                coast_eval = self.eval_coast(id, cost);
+                ratio_eval = self.eval_ratio(id);
+
                 if coast_eval != BuyEval::SKIP {
-                    if ratio_eval == BuyEval::SKIP {break;}
+                    if ratio_eval == BuyEval::SKIP {
+                        break;
+                    }
                     if coast_eval == BuyEval::FORK {
                         let mut fork: T6 = self.fork();
-                        let lvl: u32 = self.vars.get(ids[i]).get_level();
-                        fork.t6data.caps[ids[i]] = lvl;
-                        if self.depth <= 2 {
-                            println!("Depth {}; Creating coasting fork for {} lvl {}", self.depth, names[i], lvl);
+                        let lvl: u32 = self.vars.get(id).get_level();
+                        fork.t6data.caps[id] = lvl;
+                        if self.depth <= 3 {
+                            println!(
+                                "Depth {}; Creating coasting fork for {} lvl {}",
+                                self.depth, name, lvl
+                            );
                         }
                         let res: SimRes = fork.simulate();
-                        if self.depth <= 15 {
+                        if self.depth <= 3 {
                             //println!("Finished the fork!")
                         }
                         if res.t < self.best_res.t {
@@ -491,9 +515,14 @@ impl T6 {
                     }
                     if ratio_eval == BuyEval::FORK {
                         let mut fork: T6 = self.fork();
-                        fork.t6data.skip[ids[i]] = true;
-                        if self.depth <= 2 {
-                            println!("Depth {}; Creating ratio fork for {} lvl {}", self.depth, names[i], self.vars.get(ids[i]).get_level());
+                        fork.t6data.skip[id] = true;
+                        if self.depth <= 3 {
+                            println!(
+                                "Depth {}; Creating ratio fork for {} lvl {}",
+                                self.depth,
+                                name,
+                                self.vars.get(id).get_level()
+                            );
                         }
                         let res: SimRes = fork.simulate();
                         if res.t < self.best_res.t {
@@ -503,20 +532,22 @@ impl T6 {
                     }
 
                     self.rho = log10sub(self.rho, cost);
-                    self.vars.getm(ids[i]).buy();
-                    cost = self.vars.get(ids[i]).get_cost();
-                    for j in 0..7 {self.t6data.skip[j] = false;}
+                    self.vars.getm(id).buy();
+                    cost = self.vars.get(id).get_cost();
+                    self.t6data.skip.fill(false);
 
                     if self.maxrho > self.data.tau - 5. {
-                        self.varbuys.push(VarBuy { symb: s!(names[i]), lvl: self.vars.get(ids[i]).get_level(), t: self.t })
+                        self.varbuys.push(VarBuy {
+                            symb: name.to_string(),
+                            lvl: self.vars.get(id).get_level(),
+                            t: self.t,
+                        })
                     }
-                }
-                else {
-                    self.t6data.caps[ids[i]] = self.vars.get(ids[i]).get_level();
+                } else {
+                    self.t6data.caps[id] = self.vars.get(id).get_level();
                     break;
                 }
             }
         }
     }
-
 }

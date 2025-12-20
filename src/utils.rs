@@ -7,29 +7,37 @@ macro_rules! s {
     };
 }
 
-pub fn log10tostr (x:f64) -> String {
+pub fn log10tostr(x: f64) -> String {
     let m = 10f64.powf(x - x.floor());
 
-    s!(format!("{}e{}", (100. * m).round() / 100., x.floor()))
+    format!("{}e{}", (100. * m).round() / 100., x.floor()).to_string()
 }
 
-pub fn strtolog10(s: String) -> f64 {
+pub fn strtolog10(s: &str) -> f64 {
     let split: Vec<&str> = s.split("e").collect();
-    let m: f64 = split[0].parse().unwrap();
-    let e: f64 = split[1].parse().unwrap();
+    let m: f64 = if split.len() == 1 {
+        1.
+    } else {
+        split[0].parse().unwrap_or(1.)
+    };
+    let e: f64 = split[if split.len() == 1 { 0 } else { 1 }]
+        .parse()
+        .unwrap_or(0.);
 
     e + m.log10()
 }
 
-pub fn log10add(a:f64, b:f64) -> f64 {
-    let max:f64 = a.max(b);
-    let min:f64 = a.min(b);
-    let whole1:f64 = max.floor();
-    let frac1:f64 = 10f64.powf(max - whole1);
-    let whole2:f64 = min.floor();
-    let frac2:f64 = 10f64.powf(min - whole2);
+pub fn log10add(a: f64, b: f64) -> f64 {
+    let max: f64 = a.max(b);
+    let min: f64 = a.min(b);
+    let whole1: f64 = max.floor();
+    let frac1: f64 = 10f64.powf(max - whole1);
+    let whole2: f64 = min.floor();
+    let frac2: f64 = 10f64.powf(min - whole2);
 
-    if whole1 > whole2 + 40. {return max};
+    if whole1 > whole2 + 40. {
+        return max;
+    };
 
     whole1 + (frac1 + frac2 / 10f64.powf(whole1 - whole2)).log10()
 }
@@ -43,22 +51,24 @@ pub fn log10add(a:f64, b:f64) -> f64 {
     max + (1. + 10f64.powf(min - max)).log10()
 }*/
 
-pub fn log10sub(a:f64, b:f64) -> f64 {
-    let max:f64 = a.max(b);
-    let min:f64 = a.min(b);
-    let whole1:f64 = max.floor();
-    let frac1:f64 = 10f64.powf(max - whole1);
-    let whole2:f64 = min.floor();
-    let frac2:f64 = 10f64.powf(min - whole2);
+pub fn log10sub(a: f64, b: f64) -> f64 {
+    let max: f64 = a.max(b);
+    let min: f64 = a.min(b);
+    let whole1: f64 = max.floor();
+    let frac1: f64 = 10f64.powf(max - whole1);
+    let whole2: f64 = min.floor();
+    let frac2: f64 = 10f64.powf(min - whole2);
 
-    if whole1 > whole2 + 40. {return max};
+    if whole1 > whole2 + 40. {
+        return max;
+    };
 
     whole1 + (frac1 - frac2 / 10f64.powf(whole1 - whole2)).log10()
 }
 
-pub fn get_time_string(time:f64) -> String {
-    let mut mins:f64 = (time / 60.).floor();
-    let mut hours:f64 = (mins / 60.).floor();
+pub fn get_time_string(time: f64) -> String {
+    let mut mins: f64 = (time / 60.).floor();
+    let mut hours: f64 = (mins / 60.).floor();
     mins -= 60. * hours;
     let days = (hours / 24f64).floor();
     hours -= 24. * days;
@@ -72,15 +82,23 @@ pub trait Cost {
     fn get_cost(&self, level: u32) -> f64;
 }
 
+#[derive(Debug)]
 pub struct ExponentialCost {
     base: f64,
-    exp: f64
+    exp: f64,
 }
 
 impl ExponentialCost {
     pub fn new(base: f64, exp: f64) -> Self {
         ExponentialCost {
             base: base.log10(),
+            exp: exp.log10(),
+        }
+    }
+
+    pub fn new_fullbase(base: f64, exp: f64) -> Self {
+        ExponentialCost {
+            base: base,
             exp: exp.log10(),
         }
     }
@@ -92,13 +110,35 @@ impl Cost for ExponentialCost {
     }
 }
 
+#[derive(Debug)]
 pub struct FirstFreeCost<T: Cost> {
-    pub model: T
+    pub model: T,
 }
 
 impl<T: Cost> Cost for FirstFreeCost<T> {
     fn get_cost(&self, level: u32) -> f64 {
-        self.model.get_cost(level - 1)
+        if level == 0 {
+            f64::NEG_INFINITY
+        } else {
+            self.model.get_cost(level - 1)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct CompositeCost<T: Cost, U: Cost> {
+    pub model1: T,
+    pub model2: U,
+    pub cutoff: u32,
+}
+
+impl<T: Cost, U: Cost> Cost for CompositeCost<T, U> {
+    fn get_cost(&self, level: u32) -> f64 {
+        if level < self.cutoff {
+            self.model1.get_cost(level)
+        } else {
+            self.model2.get_cost(level - self.cutoff)
+        }
     }
 }
 
@@ -108,29 +148,53 @@ pub trait Value {
     fn recompute(&self, level: u32) -> f64;
 }
 
+#[derive(Debug)]
 pub struct StepwiseValue {
     exp: f64,
-    len: u32
+    len: u32,
+    offset: f64,
 }
 
 impl StepwiseValue {
     pub fn new(exp: f64, len: u32) -> Self {
-        StepwiseValue { exp: exp, len: len }
+        StepwiseValue {
+            exp: exp,
+            len: len,
+            offset: 0.,
+        }
+    }
+    pub fn new_offset(exp: f64, len: u32, offset: f64) -> Self {
+        StepwiseValue {
+            exp: exp,
+            len: len,
+            offset: offset,
+        }
     }
 }
 
 impl Value for StepwiseValue {
     fn recompute(&self, level: u32) -> f64 {
+        if level == 0 {
+            return self.offset.log10();
+        }
+
         let intpart: f64 = (level / self.len) as f64;
         let modpart: f64 = (level as f64) - intpart * (self.len as f64);
         let d: f64 = (self.len as f64) / (self.exp - 1.);
 
-        log10sub((d + modpart).log10() + self.exp.log10() * intpart, d.log10())
+        log10add(
+            log10sub(
+                (d + modpart).log10() + self.exp.log10() * intpart,
+                d.log10(),
+            ),
+            self.offset.log10(),
+        )
     }
 }
 
+#[derive(Debug)]
 pub struct ExponentialValue {
-    base: f64
+    base: f64,
 }
 
 impl ExponentialValue {
@@ -145,20 +209,33 @@ impl Value for ExponentialValue {
     }
 }
 
+#[derive(Debug)]
 pub struct LinearValue {
     base: f64,
-    offset: f64
+    offset: f64,
 }
 
 impl LinearValue {
     pub fn new(base: f64, offset: f64) -> Self {
-        LinearValue { base: base, offset: offset }
+        LinearValue {
+            base: base,
+            offset: offset,
+        }
     }
 }
 
 impl Value for LinearValue {
     fn recompute(&self, level: u32) -> f64 {
         self.base * level as f64 + self.offset
+    }
+}
+
+#[derive(Debug)]
+pub struct EmptyValue {}
+
+impl Value for EmptyValue {
+    fn recompute(&self, _level: u32) -> f64 {
+        0.
     }
 }
 
@@ -172,22 +249,23 @@ pub trait VariableTrait {
     fn set(&mut self, level: u32);
 }
 
+#[derive(Debug)]
 pub struct Variable<T: Cost, U: Value> {
     costmodel: T,
     valuemodel: U,
     pub level: u32,
     pub value: f64,
-    pub cost: f64
+    pub cost: f64,
 }
 
 impl<T: Cost, U: Value> Variable<T, U> {
     pub fn new(costmodel: T, valuemodel: U) -> Self {
-        let mut var:Variable<T,U> = Variable {
+        let mut var: Variable<T, U> = Variable {
             costmodel: costmodel,
             valuemodel: valuemodel,
-            level: 1,
+            level: 0,
             value: 1.,
-            cost: 1.
+            cost: 1.,
         };
 
         var.recompute();
@@ -214,7 +292,7 @@ impl<T: Cost, U: Value> Variable<T, U> {
     }
 }
 
-impl<T: Cost, U:Value> VariableTrait for Variable<T, U> {
+impl<T: Cost, U: Value> VariableTrait for Variable<T, U> {
     fn get_level(&self) -> u32 {
         self.level
     }
@@ -236,39 +314,70 @@ impl<T: Cost, U:Value> VariableTrait for Variable<T, U> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct TheoryData {
     pub tau: f64,
     pub students: u32,
-    pub rho: f64
+    pub rho: f64,
 }
 
-impl Copy for TheoryData{}
+impl Copy for TheoryData {}
 
 pub struct VarBuy {
     pub symb: String,
     pub lvl: u32,
-    pub t: f64
+    pub t: f64,
 }
 
 impl Debug for VarBuy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: lvl {}, {}", self.symb, self.lvl, get_time_string(self.t))
+        write!(
+            f,
+            "{}: lvl {}, {}",
+            self.symb,
+            self.lvl,
+            get_time_string(self.t)
+        )
     }
 }
 
 impl Clone for VarBuy {
     fn clone(&self) -> Self {
-        VarBuy { symb: self.symb.clone(), lvl: self.lvl, t: self.t }
+        VarBuy {
+            symb: self.symb.clone(),
+            lvl: self.lvl,
+            t: self.t,
+        }
     }
+}
+
+pub fn get_last_purchase(array: &[VarBuy], variable: &str) -> Option<u32> {
+    for buy in array.iter().rev() {
+        if buy.symb == *variable {
+            return Some(buy.lvl);
+        }
+    }
+    None
 }
 
 #[derive(PartialEq, Debug)]
 pub enum BuyEval {
-    BUY, FORK, SKIP
+    BUY,
+    FORK,
+    SKIP,
 }
 
+#[derive(Debug)]
 pub struct SimRes {
     pub t: f64,
-    pub var_buys: Option<Vec<VarBuy>>
+    pub var_buys: Option<Vec<VarBuy>>,
+}
+
+impl Default for SimRes {
+    fn default() -> Self {
+        SimRes {
+            t: f64::MAX,
+            var_buys: None,
+        }
+    }
 }
