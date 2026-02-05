@@ -54,12 +54,11 @@ impl T1vars {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct T1data {
+    pub caps: [u32; 4],
     pub do_coasting: bool,
 }
-
-impl Copy for T1data {}
 
 pub struct T1state {
     pub levels: [u32; 4],
@@ -87,7 +86,10 @@ impl T1 {
     pub fn new(data: TheoryData, goal: f64, state: Option<T1state>) -> Self {
         let mut t1: T1 = T1 {
             data: data,
-            t1data: T1data { do_coasting: true },
+            t1data: T1data {
+                caps: [u32::MAX; 4],
+                do_coasting: true 
+            },
             goal: goal,
             rho: 0.,
             maxrho: 0.,
@@ -192,6 +194,39 @@ impl T1 {
         }
     }
 
+    fn eval_coast(&self, id: usize, cost: f64) -> BuyEval {
+        let dist: f64 = self.goal - cost;
+        if dist > 6. || !self.t1data.do_coasting {
+            return BuyEval::BUY;
+        }
+        match id {
+            0  => {
+                if dist < 0.3 {
+                    BuyEval::SKIP
+                } else {
+                    BuyEval::FORK
+                }
+            }
+            1 => {
+                if dist < 2f64.log10() {
+                    BuyEval::SKIP
+                } else if dist < 4f64.log10() {
+                    BuyEval::FORK
+                } else {
+                    BuyEval::BUY
+                }
+            }
+            2 => {
+                if dist < 2. {
+                    BuyEval::FORK
+                } else {
+                    BuyEval::BUY
+                }
+            }
+            _ => BuyEval::BUY,
+        }
+    }
+
     fn tick(&mut self) {
         self.rho = log10add(
             self.rho,
@@ -230,33 +265,60 @@ impl T1 {
 
     fn buy(&mut self) {
         let mut cost: f64;
-        let mut eval: BuyEval;
-        let names = ["c4", "c3", "q2", "q1"];
-        let ids: [usize; 4] = [3, 2, 1, 0];
+        let mut coast_eval: BuyEval;
+        let mut ratio_eval: BuyEval;
+        let variables: [(usize, &str); 4] = [(3, "c4"), (2, "c3"), (1, "q2"), (0, "q1")];
 
-        for i in 0..4 {
-            cost = self.vars.get(ids[i]).get_cost();
+        for (id, name) in variables {
+            if self.vars.get(id).get_level() >= self.t1data.caps[id] {
+                continue;
+            }
+
+            cost = self.vars.get(id).get_cost();
+
             while self.rho > cost {
-                eval = if cost < self.data.tau - 50. {
-                    BuyEval::BUY
-                } else {
-                    self.eval_buy(ids[i])
-                };
-                if eval == BuyEval::BUY {
+                coast_eval = self.eval_coast(id, cost);
+                ratio_eval = BuyEval::BUY;
+
+                if coast_eval != BuyEval::SKIP {
+                    if ratio_eval == BuyEval::SKIP {
+                        break;
+                    }
+                    if coast_eval == BuyEval::FORK {
+                        let mut fork: T1 = self.fork();
+                        let lvl: u32 = self.vars.get(id).get_level();
+                        fork.t1data.caps[id] = lvl;
+                        /*if self.depth <= 3 {
+                            println!(
+                                "Depth {}; Creating coasting fork for {} lvl {}",
+                                self.depth, name, lvl
+                            );
+                        }*/
+                        let res: SimRes = fork.simulate();
+                        if self.depth <= 3 {
+                            //println!("Finished the fork!")
+                        }
+                        if res.t < self.best_res.t {
+                            self.best_res.t = res.t;
+                            self.best_res.var_buys = res.var_buys;
+                        }
+                    }
+
                     self.rho = log10sub(self.rho, cost);
-                    self.vars.getm(ids[i]).buy();
-                    cost = self.vars.get(ids[i]).get_cost();
+                    self.vars.getm(id).buy();
+                    cost = self.vars.get(id).get_cost();
 
                     if self.maxrho > self.data.tau - 5. {
                         self.varbuys.push(VarBuy {
-                            symb: s!(names[i]),
-                            lvl: self.vars.get(ids[i]).get_level(),
+                            symb: name.to_string(),
+                            lvl: self.vars.get(id).get_level(),
                             t: self.t,
                         })
                     }
                 } else {
+                    self.t1data.caps[id] = self.vars.get(id).get_level();
                     break;
-                };
+                }
             }
         }
     }

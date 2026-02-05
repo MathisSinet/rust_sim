@@ -6,6 +6,7 @@ mod ioutils;
 mod t1;
 mod t2;
 mod t6;
+mod t7;
 pub mod utils;
 use ioutils::*;
 use utils::*;
@@ -128,6 +129,22 @@ fn sim_t1() -> t1::T1 {
     sim
 }
 
+fn sim_t7() {
+    let mut sim: t7::T7 = t7::T7::new(
+        TheoryData {
+            tau: strtolog10("1.83e618"),
+            students: 501,
+            rho: 0.,
+        },
+        strtolog10("5.84e620"),
+        None,
+    );
+
+    let res = sim.simulate();
+
+    println!("{}", get_time_string(res.t));
+}
+
 fn sim_t2_input() -> Result<t2::T2, Box<dyn Error>> {
     let theory_data = input_theory_data()?;
     let goal = strtolog10(&input("Input goal: ")?);
@@ -236,7 +253,7 @@ fn sim_de() -> de::DE {
 }
 
 fn t1_pub_tables() -> Result<(), Box<dyn Error>> {
-    let path = Path::new("data/t1.json");
+    let path = Path::new("data/t1c34.json");
 
     const CTEND: u32 = 900 * 32;
 
@@ -269,17 +286,93 @@ fn t1_pub_tables() -> Result<(), Box<dyn Error>> {
                 students: 500,
                 rho: 0.,
             },
-            (start + a) as f64 / 32. - 1.5,
+            (start + a) as f64 / 32. - 6.,
             None,
         );
         simbase.t1data.do_coasting = false;
+
+        for end in (start + a)..(start + b + 1) {
+            simbase.goal = end as f64 / 32. - 6.;
+            simbase.simulate();
+
+            sim = simbase.fork();
+            sim.t1data.do_coasting = true;
+            sim.goal = end as f64 / 32.;
+            simt = sim.simulate().t;
+
+            end_t = match pub_data.get(&end) {
+                None => 1e100,
+                Some(pdata) => pdata.t,
+            };
+
+            if simt + end_t < best_t {
+                best_t = simt + end_t;
+                best_next = end;
+            }
+        }
+
+        pub_data.insert(
+            start,
+            PubData {
+                next: best_next,
+                t: best_t,
+            },
+        );
+    }
+
+    //pub_data.insert(23999, PubData { next: 24000, t: 0.1 });
+
+    let updated_content = serde_json::to_string_pretty(&pub_data)?;
+    fs::write(path, updated_content)?;
+
+    Ok(())
+}
+
+fn t7_pub_tables() -> Result<(), Box<dyn Error>> {
+    let path = Path::new("data/t7.json");
+
+    const CTEND: u32 = 800 * 32;
+
+    let content = fs::read_to_string(path)?;
+
+    let mut pub_data: HashMap<u32, PubData> = serde_json::from_str(&content)?;
+
+    println!("Read");
+    //println!("{:?}", pub_data.get(&24000));
+
+    let mut best_t: f64;
+    let mut best_next: u32;
+    let mut sim: t7::T7;
+    let mut simbase: t7::T7;
+    let mut simt: f64;
+    let mut a: u32;
+    let mut b: u32;
+    let mut end_t: f64;
+
+    for start in ((700 * 32)..(800 * 32)).rev() {
+        println!("Starting pub tables for {}", start as f64 / 32.);
+        best_t = f64::MAX;
+        best_next = 0;
+        a = 40.min(CTEND - start);
+        b = 128.min(CTEND - start);
+
+        simbase = t7::T7::new(
+            TheoryData {
+                tau: start as f64 / 32.,
+                students: 500,
+                rho: 0.,
+            },
+            (start + a) as f64 / 32. - 1.5,
+            None,
+        );
+        simbase.t7data.do_coasting = false;
 
         for end in (start + a)..(start + b + 1) {
             simbase.goal = end as f64 / 32. - 1.5;
             simbase.simulate();
 
             sim = simbase.fork();
-            sim.t1data.do_coasting = true;
+            sim.t7data.do_coasting = true;
             sim.goal = end as f64 / 32.;
             simt = sim.simulate().t;
 
@@ -673,11 +766,12 @@ fn pub_tables_read_chain(path: String, rho: f64, grid: f64) -> Result<(), Box<dy
                     Some(nextdata) => data.t - nextdata.t,
                 };
                 println!(
-                    "{} -> {}; {}; current pub: {}",
+                    "{} -> {}; {}; current pub: {}, {:.3}",
                     log10tostr(index as f64 / grid),
                     log10tostr(data.next as f64 / grid),
                     get_time_string(data.t),
-                    get_time_string(curpubtime)
+                    get_time_string(curpubtime),
+                    10f64.powf((data.next as f64 / grid - index as f64 / grid) * 0.152)
                 );
                 if data.t > 0. {
                     index = data.next;
@@ -728,14 +822,14 @@ fn rust_sim_cli() -> Result<(), Box<dyn Error>> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    rust_sim_cli()?;
-
-    //let _res = de_pub_tables()?;
+    //rust_sim_cli()?;
+    //sim_t7();
+    let _res = t1_pub_tables()?;
     //let _res2 = get_pub_tables_range(s!("data/ef.json"), 375*32);
     //let _ = get_pub_tables_diff(s!("data/de.json"), 875*16, 900*16, 16.);
     //let _ = pub_tables_read_chain(s!("data/de1050.json"), 900., 16.);
     //let _ = pub_tables_read_chain(s!("data/de1050.json"), (strtolog10(s!("4.97e143")) + 4f64.log10()) * 2.5 * 2.5, 16.);
-    //let _ = pub_tables_read_chain(s!("data/t1.json"), 800., 32.);
+    let _ = pub_tables_read_chain(s!("data/t1c34.json"), 800., 32.);
 
     //println!("{}", get_t(2291));
 
